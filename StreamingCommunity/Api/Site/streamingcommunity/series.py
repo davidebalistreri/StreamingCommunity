@@ -95,7 +95,7 @@ def download_video(index_season_selected: int, index_episode_selected: int, scra
     return hls_process['path'], hls_process['stopped']
 
 
-def download_episode(index_season_selected: int, scrape_serie: GetSerieInfo, video_source: VideoSource, download_all: bool = False, episode_selection: str = None) -> None:
+def download_episode(index_season_selected: int, scrape_serie: GetSerieInfo, video_source: VideoSource, download_all: bool = False, episode_selection: str = None) -> bool:
     """
     Handle downloading episodes for a specific season.
 
@@ -105,6 +105,9 @@ def download_episode(index_season_selected: int, scrape_serie: GetSerieInfo, vid
         - video_source (VideoSource): Video source object
         - download_all (bool): Whether to download all episodes
         - episode_selection (str, optional): Pre-defined episode selection that bypasses manual input
+        
+    Returns:
+        - bool: True if download was stopped by user, False otherwise
     """
     # Get episodes for the selected season
     episodes = scrape_serie.getEpisodeSeasons(index_season_selected)
@@ -112,7 +115,7 @@ def download_episode(index_season_selected: int, scrape_serie: GetSerieInfo, vid
 
     if episodes_count == 0:
         console.print(f"[red]No episodes found for season {index_season_selected}")
-        return
+        return False
 
     if download_all:
         # Download all episodes in the season
@@ -120,9 +123,11 @@ def download_episode(index_season_selected: int, scrape_serie: GetSerieInfo, vid
             path, stopped = download_video(index_season_selected, i_episode, scrape_serie, video_source)
 
             if stopped:
-                break
+                console.print(f"\n[red]Download stopped by user for season: [yellow]{index_season_selected}.")
+                return True
 
         console.print(f"\n[red]End downloaded [yellow]season: [red]{index_season_selected}.")
+        return False
 
     else:
         # Display episodes list and manage user selection
@@ -141,7 +146,10 @@ def download_episode(index_season_selected: int, scrape_serie: GetSerieInfo, vid
             path, stopped = download_video(index_season_selected, i_episode, scrape_serie, video_source)
 
             if stopped:
-                break
+                console.print(f"\n[red]Download stopped by user for season: [yellow]{index_season_selected}.")
+                return True
+                
+        return False
 
 
 def download_series(select_season: MediaItem, season_selection: str = None, episode_selection: str = None) -> None:
@@ -210,10 +218,15 @@ def download_series(select_season: MediaItem, season_selection: str = None, epis
         season_number = season.number
 
         if len(list_season_select) > 1 or index_season_selected == "*":
-            download_episode(season_number, scrape_serie, video_source, download_all=True)
+            stopped = download_episode(season_number, scrape_serie, video_source, download_all=True)
             
         else:
-            download_episode(season_number, scrape_serie, video_source, download_all=False, episode_selection=episode_selection)
+            stopped = download_episode(season_number, scrape_serie, video_source, download_all=False, episode_selection=episode_selection)
+
+        # If download was stopped by user, break the entire season loop
+        if stopped:
+            console.print(f"\n[red]Download stopped by user. Stopping all remaining seasons.")
+            break
 
     if site_constant.TELEGRAM_BOT:
         bot.send_message("Finito di scaricare tutte le serie e episodi", None)
