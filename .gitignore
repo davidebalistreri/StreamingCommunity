@@ -46,6 +46,9 @@ downloaded_files/
 .vscode
 .ruff_cache
 
+# Configuration overrides
+user_config.json
+
 # Other
 Video
 note.txt

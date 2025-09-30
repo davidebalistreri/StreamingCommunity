@@ -37,7 +37,7 @@
         ],
         "cleanup_tmp_folder": true,
         "get_only_link": false,
-        "consider_failed_sync_valid": true
+        "consider_failed_sync_valid": false
     },
     "M3U8_CONVERSION": {
         "use_codec": false,

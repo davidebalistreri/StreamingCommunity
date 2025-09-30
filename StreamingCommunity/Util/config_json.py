@@ -3,6 +3,7 @@
 import os
 import sys
 import json
+import shutil
 import logging
 import requests
 from typing import Any, List
@@ -21,12 +22,13 @@ console = Console()
 
 
 class ConfigManager:
-    def __init__(self, file_name: str = 'config.json') -> None:
+    def __init__(self, default_config_name: str = 'default_config.json', user_config_name: str = 'user_config.json') -> None:
         """
-        Initialize the ConfigManager.
+        Initialize the ConfigManager with support for default and user configuration files.
         
         Args:
-            file_name (str, optional): Configuration file name. Default: 'config.json'.
+            default_config_name (str, optional): Default configuration file name. Default: 'default_config.json'.
+            user_config_name (str, optional): User configuration file name. Default: 'user_config.json'.
         """
         # Determine the base path - use the current working directory
         if getattr(sys, 'frozen', False):
@@ -38,70 +40,185 @@ class ConfigManager:
             base_path = os.getcwd()
             
         # Initialize file paths
-        self.file_path = os.path.join(base_path, file_name)
+        self.default_config_path = os.path.join(base_path, default_config_name)
+        self.user_config_path = os.path.join(base_path, user_config_name)
         self.domains_path = os.path.join(base_path, 'domains.json')
         
-        # Display the actual file path for debugging
-        console.print(f"[bold cyan]Configuration file path:[/bold cyan] [green]{self.file_path}[/green]")
+        # Backward compatibility: check for old config.json
+        self.legacy_config_path = os.path.join(base_path, 'config.json')
         
-        # Reference repository URL
-        self.reference_config_url = 'https://raw.githubusercontent.com/Arrowar/StreamingCommunity/refs/heads/main/config.json'
+        # Display the actual file paths for debugging
+        console.print(f"[bold cyan]Default config path:[/bold cyan] [green]{self.default_config_path}[/green]")
+        console.print(f"[bold cyan]User config path:[/bold cyan] [green]{self.user_config_path}[/green]")
+        
+        # Reference repository URL (now points to default_config.json)
+        self.reference_config_url = 'https://raw.githubusercontent.com/Arrowar/StreamingCommunity/refs/heads/main/default_config.json'
         
         # Initialize data structures
-        self.config = {}
+        self.default_config = {}
+        self.user_config = {}
+        self.config = {}  # Merged configuration
         self.configSite = {}
         self.cache = {}
 
         self.fetch_domain_online = True
         self.validate_github_config = False
         
-        console.print(f"[bold cyan]Initializing ConfigManager:[/bold cyan] [green]{self.file_path}[/green]")
+        console.print(f"[bold cyan]Initializing ConfigManager with two-level configuration[/bold cyan]")
         
         # Load the configuration
         self.load_config()
         
     def load_config(self) -> None:
-        """Load the configuration and initialize all settings."""
-        if not os.path.exists(self.file_path):
-            console.print(f"[bold red]WARNING: Configuration file not found:[/bold red] {self.file_path}")
+        """Load the default and user configuration files and merge them."""
+        # Handle backward compatibility: migrate old config.json if it exists
+        self._handle_legacy_migration()
+        
+        # Load default configuration
+        self._load_default_config()
+        
+        # Load user configuration (optional)
+        self._load_user_config()
+        
+        # Merge configurations (user overrides default)
+        self._merge_configurations()
+        
+        console.print(f"[bold green]Configuration loaded:[/bold green] {len(self.config)} sections")
+        
+        # Update settings from the merged configuration
+        self._update_settings_from_config()
+        
+        # Validate and update the configuration if requested
+        if self.validate_github_config:
+            self._validate_and_update_config()
+        else:
+            console.print("[bold yellow]GitHub validation disabled[/bold yellow]")
+            
+        # Load site data based on fetch_domain_online setting
+        self._load_site_data()
+        
+    def _handle_legacy_migration(self) -> None:
+        """Handle migration from old config.json to new two-file system."""
+        if os.path.exists(self.legacy_config_path) and not os.path.exists(self.default_config_path):
+            console.print("[bold yellow]Migrating from legacy config.json to new two-file system...[/bold yellow]")
+            
+            # Copy config.json to default_config.json
+            shutil.copy2(self.legacy_config_path, self.default_config_path)
+            
+            # Create empty user_config.json
+            with open(self.user_config_path, 'w') as f:
+                json.dump({}, f, indent=4)
+                
+            console.print(f"[bold green]Migration complete:[/bold green] Created {os.path.basename(self.default_config_path)} and {os.path.basename(self.user_config_path)}")
+            console.print(f"[bold yellow]Note:[/bold yellow] You can now customize settings in {os.path.basename(self.user_config_path)}")
+    
+    def _load_default_config(self) -> None:
+        """Load the default configuration file."""
+        if not os.path.exists(self.default_config_path):
+            console.print(f"[bold red]WARNING: Default configuration file not found:[/bold red] {self.default_config_path}")
             console.print("[bold yellow]Attempting to download from reference repository...[/bold yellow]")
             self._download_reference_config()
         
-        # Load the configuration file
         try:
-            with open(self.file_path, 'r') as f:
-                self.config = json.load(f)
-            console.print(f"[bold green]Configuration loaded:[/bold green] {len(self.config)} keys")
+            with open(self.default_config_path, 'r', encoding='utf-8') as f:
+                self.default_config = json.load(f)
+            console.print(f"[bold green]Default config loaded:[/bold green] {len(self.default_config)} sections")
             
-            # Update settings from the configuration
-            self._update_settings_from_config()
-            
-            # Validate and update the configuration if requested
-            if self.validate_github_config:
-                self._validate_and_update_config()
-            else:
-                console.print("[bold yellow]GitHub validation disabled[/bold yellow]")
-                
-            # Load site data based on fetch_domain_online setting
-            self._load_site_data()
-                
         except json.JSONDecodeError as e:
-            console.print(f"[bold red]Error parsing JSON:[/bold red] {str(e)}")
+            console.print(f"[bold red]Error parsing default config JSON:[/bold red] {str(e)}")
             self._handle_config_error()
-
         except Exception as e:
-            console.print(f"[bold red]Error loading configuration:[/bold red] {str(e)}")
+            console.print(f"[bold red]Error loading default config:[/bold red] {str(e)}")
             self._handle_config_error()
+    
+    def _load_user_config(self) -> None:
+        """Load the user configuration file (optional)."""
+        if not os.path.exists(self.user_config_path):
+            console.print(f"[bold yellow]User config not found:[/bold yellow] {self.user_config_path}")
+            console.print("[bold cyan]Creating empty user config file...[/bold cyan]")
+            
+            # Create empty user config with example
+            example_config = {
+                "_comment": "This file allows you to override default settings. Only add the keys you want to change.",
+                "_example": {
+                    "M3U8_DOWNLOAD": {
+                        "consider_failed_sync_valid": True,
+                        "specific_list_audio": ["ita", "eng"]
+                    }
+                }
+            }
+            
+            with open(self.user_config_path, 'w', encoding='utf-8') as f:
+                json.dump(example_config, f, indent=4)
+            
+            self.user_config = {}
+            console.print(f"[bold green]Created example user config:[/bold green] {self.user_config_path}")
+            return
+        
+        try:
+            with open(self.user_config_path, 'r', encoding='utf-8') as f:
+                self.user_config = json.load(f)
+            
+            # Remove example/comment keys
+            if '_comment' in self.user_config:
+                del self.user_config['_comment']
+            if '_example' in self.user_config:
+                del self.user_config['_example']
+                
+            console.print(f"[bold green]User config loaded:[/bold green] {len(self.user_config)} sections")
+            
+        except json.JSONDecodeError as e:
+            console.print(f"[bold red]Error parsing user config JSON:[/bold red] {str(e)}")
+            console.print("[bold yellow]Using default configuration only[/bold yellow]")
+            self.user_config = {}
+        except Exception as e:
+            console.print(f"[bold red]Error loading user config:[/bold red] {str(e)}")
+            console.print("[bold yellow]Using default configuration only[/bold yellow]")
+            self.user_config = {}
+    
+    def _merge_configurations(self) -> None:
+        """Merge default and user configurations, with user taking priority."""
+        self.config = self._deep_merge_configs(self.default_config, self.user_config)
+        
+        if self.user_config:
+            overridden_keys = self._get_overridden_keys(self.default_config, self.user_config)
+            if overridden_keys:
+                console.print(f"[bold cyan]User overrides active:[/bold cyan] {', '.join(overridden_keys[:5])}")
+                if len(overridden_keys) > 5:
+                    console.print(f"[bold cyan]... and {len(overridden_keys) - 5} more[/bold cyan]")
+        else:
+            console.print("[bold yellow]No user overrides found, using defaults[/bold yellow]")
+    
+    def _get_overridden_keys(self, default_config: dict, user_config: dict, prefix="") -> list:
+        """Get the list of keys that are overridden in user config."""
+        overridden_keys = []
+        
+        for key, value in user_config.items():
+            if key.startswith('_'):  # Skip comment/example keys
+                continue
+                
+            full_key = f"{prefix}.{key}" if prefix else key
+            
+            if key in default_config:
+                if isinstance(value, dict) and isinstance(default_config[key], dict):
+                    overridden_keys.extend(self._get_overridden_keys(default_config[key], value, full_key))
+                else:
+                    overridden_keys.append(full_key)
+            else:
+                overridden_keys.append(full_key)
+                
+        return overridden_keys
     
     def _handle_config_error(self) -> None:
         """Handle configuration errors by downloading the reference version."""
         console.print("[bold yellow]Attempting to retrieve reference configuration...[/bold yellow]")
         self._download_reference_config()
         
-        # Reload the configuration
+        # Reload the default configuration
         try:
-            with open(self.file_path, 'r') as f:
-                self.config = json.load(f)
+            with open(self.default_config_path, 'r', encoding='utf-8') as f:
+                self.default_config = json.load(f)
+            self._merge_configurations()
             self._update_settings_from_config()
             console.print("[bold green]Reference configuration loaded successfully[/bold green]")
         except Exception as e:
@@ -128,10 +245,10 @@ class ConfigManager:
             response = requests.get(self.reference_config_url, timeout=8, headers={'User-Agent': get_userAgent()})
             
             if response.status_code == 200:
-                with open(self.file_path, 'wb') as f:
+                with open(self.default_config_path, 'wb') as f:
                     f.write(response.content)
                 file_size = len(response.content) / 1024
-                console.print(f"[bold green]Download complete:[/bold green] {os.path.basename(self.file_path)} ({file_size:.2f} KB)")
+                console.print(f"[bold green]Download complete:[/bold green] {os.path.basename(self.default_config_path)} ({file_size:.2f} KB)")
             else:
 
                 error_msg = f"HTTP Error: {response.status_code}, Response: {response.text[:100]}"
@@ -600,17 +717,45 @@ class ConfigManager:
             console.print(f"[bold red]{error_msg}[/bold red]")
     
     def save_config(self) -> None:
-        """Save the main configuration to file."""
+        """Save configuration changes to user_config.json file."""
         try:
-            with open(self.file_path, 'w') as f:
-                json.dump(self.config, f, indent=4)
+            # Only save the differences from default config to user config
+            changes = self._extract_changes_from_default()
+            
+            with open(self.user_config_path, 'w', encoding='utf-8') as f:
+                json.dump(changes, f, indent=4)
 
-            logging.info(f"Configuration saved to: {self.file_path}")
+            logging.info(f"Configuration changes saved to: {self.user_config_path}")
+            console.print(f"[bold green]User configuration saved:[/bold green] {len(changes)} changes")
 
         except Exception as e:
             error_msg = f"Error saving configuration: {e}"
             console.print(f"[bold red]{error_msg}[/bold red]")
             logging.error(error_msg)
+    
+    def _extract_changes_from_default(self) -> dict:
+        """Extract only the changes from default configuration."""
+        changes = {}
+        
+        def extract_differences(default_dict, current_dict, result_dict, path=""):
+            for key, value in current_dict.items():
+                current_path = f"{path}.{key}" if path else key
+                
+                if key not in default_dict:
+                    # New key not in default
+                    result_dict[key] = value
+                elif isinstance(value, dict) and isinstance(default_dict[key], dict):
+                    # Recursive check for nested dictionaries
+                    nested_changes = {}
+                    extract_differences(default_dict[key], value, nested_changes, current_path)
+                    if nested_changes:
+                        result_dict[key] = nested_changes
+                elif value != default_dict[key]:
+                    # Value differs from default
+                    result_dict[key] = value
+        
+        extract_differences(self.default_config, self.config, changes)
+        return changes
     
     def get_all_sites(self) -> List[str]:
         """
