@@ -110,12 +110,39 @@ class GetSerieInfo:
                 verify=ssl_verify
             )
 
-            # Extract episodes from JSON response
-            json_response = response.json().get('props', {}).get('loadedSeason', {}).get('episodes', [])
+            # Check if the response is successful
+            if response.status_code != 200:
+                logging.error(f"HTTP Error {response.status_code} for season {number_season}: {response.text[:200]}")
+                return
+
+            # Extract episodes from JSON response with error handling
+            try:
+                json_data = response.json()
+                json_response = json_data.get('props', {}).get('loadedSeason', {}).get('episodes', [])
+            except (ValueError, TypeError) as json_error:
+                logging.error(f"JSON parsing error for season {number_season}: {json_error}")
+                logging.error(f"Response content: {response.text[:500]}")
+                return
+                
+            # Verify that json_response is a list and contains episodes
+            if not isinstance(json_response, list):
+                logging.error(f"Expected list of episodes for season {number_season}, got {type(json_response)}")
+                return
+                
+            if not json_response:
+                logging.warning(f"No episodes found for season {number_season}")
+                return
                 
             # Add each episode to the corresponding season's episode manager
             for dict_episode in json_response:
-                season.episodes.add(dict_episode)
+                try:
+                    if isinstance(dict_episode, dict):
+                        season.episodes.add(dict_episode)
+                    else:
+                        logging.warning(f"Invalid episode data type for season {number_season}: {type(dict_episode)}")
+                except Exception as episode_error:
+                    logging.error(f"Error adding episode to season {number_season}: {episode_error}")
+                    continue
 
         except Exception as e:
             logging.error(f"Error collecting episodes for season {number_season}: {e}")
@@ -135,16 +162,21 @@ class GetSerieInfo:
         """
         Get all episodes for a specific season.
         """
-        season = self.seasons_manager.get_season_by_number(season_number)
+        try:
+            season = self.seasons_manager.get_season_by_number(season_number)
 
-        if not season:
-            logging.error(f"Season {season_number} not found")
+            if not season:
+                logging.error(f"Season {season_number} not found")
+                return []
+                
+            if not season.episodes.episodes:
+                self.collect_info_season(season_number)
+                
+            return season.episodes.episodes if season.episodes.episodes else []
+            
+        except Exception as e:
+            logging.error(f"Error getting episodes for season {season_number}: {e}")
             return []
-            
-        if not season.episodes.episodes:
-            self.collect_info_season(season_number)
-            
-        return season.episodes.episodes
         
     def selectEpisode(self, season_number: int, episode_index: int) -> dict:
         """
