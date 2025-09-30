@@ -36,7 +36,8 @@
             "eng"
         ],
         "cleanup_tmp_folder": true,
-        "get_only_link": false
+        "get_only_link": false,
+        "consider_failed_sync_valid": true
     },
     "M3U8_CONVERSION": {
         "use_codec": false,

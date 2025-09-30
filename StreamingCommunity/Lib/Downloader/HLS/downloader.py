@@ -118,6 +118,36 @@ class PathManager:
         for subdir in ['video', 'audio', 'subs']:
             os.makedirs(os.path.join(self.temp_dir, subdir), exist_ok=True)
 
+    def check_file_exists(self, file_path: str) -> tuple[bool, str]:
+        """
+        Check if a file exists, optionally considering _failed_sync files as valid.
+        
+        Args:
+            file_path (str): The original file path to check
+            
+        Returns:
+            tuple[bool, str]: (exists, actual_path) where actual_path is the found file
+        """
+        # Check for the normal file first
+        if os.path.exists(file_path):
+            return True, file_path
+            
+        # Check if we should consider failed sync files as valid
+        consider_failed_sync = config_manager.get_bool('M3U8_DOWNLOAD', 'consider_failed_sync_valid')
+        
+        if consider_failed_sync:
+            # Check for _failed_sync.mp4 variant
+            failed_sync_path = file_path.replace('.mp4', '_failed_sync.mp4')
+            if os.path.exists(failed_sync_path):
+                return True, failed_sync_path
+                
+            # Check for _failed_sync_ts.mp4 variant (used in some cases)
+            failed_sync_ts_path = file_path.replace('.mp4', '_failed_sync_ts.mp4')
+            if os.path.exists(failed_sync_ts_path):
+                return True, failed_sync_ts_path
+        
+        return False, file_path
+
     def move_final_file(self, final_file: str):
         """Moves the final merged file to the desired output location."""
         if os.path.exists(self.output_path):
@@ -545,10 +575,13 @@ class HLS_Downloader:
             bot = get_bot_instance()
 
         try:
-            if os.path.exists(self.path_manager.output_path):
-                console.print(f"[red]Output file {self.path_manager.output_path} already exists![/red]")
+            # Check if file already exists (including _failed_sync variants if configured)
+            file_exists, existing_file_path = self.check_file_exists(self.path_manager.output_path)
+            
+            if file_exists:
+                console.print(f"[red]Output file {existing_file_path} already exists![/red]")
                 response = {
-                    'path': self.path_manager.output_path,
+                    'path': existing_file_path,
                     'url': self.m3u8_url,
                     'is_master': False,
                     'msg': 'File already exists',

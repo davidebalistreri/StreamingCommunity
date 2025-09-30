@@ -38,10 +38,34 @@ class DASH_Downloader:
         self.cdm_device = cdm_device
         self.license_url = license_url
         self.mpd_url = mpd_url
-        self.out_path = os.path.splitext(os.path.abspath(str(output_path)))[0]
-        self.original_output_path = output_path
-        self.parser = None
-        self._setup_temp_dirs()
+        self.output_path = output_path
+        self.out_path, self.tmp_dir = self.setup_paths()
+        self.parser = MPDParser(mpd_url, self.tmp_dir)
+
+    def check_file_exists(self, file_path: str) -> tuple[bool, str]:
+        """
+        Check if a file exists, optionally considering _failed_sync files as valid.
+        
+        Args:
+            file_path (str): The original file path to check
+            
+        Returns:
+            tuple[bool, str]: (exists, actual_path) where actual_path is the found file
+        """
+        # Check for the normal file first
+        if os.path.exists(file_path):
+            return True, file_path
+            
+        # Check if we should consider failed sync files as valid
+        consider_failed_sync = config_manager.get_bool('M3U8_DOWNLOAD', 'consider_failed_sync_valid')
+        
+        if consider_failed_sync:
+            # Check for _failed_sync.mp4 variant
+            failed_sync_path = file_path.replace('.mp4', '_failed_sync.mp4')
+            if os.path.exists(failed_sync_path):
+                return True, failed_sync_path
+        
+        return False, file_path
 
         self.error = None
         self.stopped = False
@@ -131,6 +155,16 @@ class DASH_Downloader:
         Download and decrypt video/audio streams. Sets self.error, self.stopped, self.output_file.
         Returns True if successful, False otherwise.
         """
+        # Check if file already exists (including _failed_sync variants if configured)
+        file_exists, existing_file_path = self.check_file_exists(self.output_path)
+        
+        if file_exists:
+            console.print(f"[red]Output file {existing_file_path} already exists![/red]")
+            self.output_file = existing_file_path
+            self.error = None
+            self.stopped = False
+            return True
+        
         self.error = None
         self.stopped = False
 
