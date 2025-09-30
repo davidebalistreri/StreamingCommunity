@@ -26,7 +26,6 @@ from .cdm_helpher import get_widevine_keys
 
 # Config
 DOWNLOAD_SPECIFIC_AUDIO = config_manager.get_list('M3U8_DOWNLOAD', 'specific_list_audio')
-FILTER_CUSTOM_REOLUTION = str(config_manager.get('M3U8_CONVERSION', 'force_resolution')).strip().lower()
 CLEANUP_TMP = config_manager.get_bool('M3U8_DOWNLOAD', 'cleanup_tmp_folder')
 
 
@@ -70,7 +69,8 @@ class DASH_Downloader:
             data_rows = []
             
             # Video info
-            selected_video, list_available_resolution, filter_custom_resolution, downloadable_video = self.parser.select_video(FILTER_CUSTOM_REOLUTION)
+            filter_custom_resolution = str(config_manager.get('M3U8_CONVERSION', 'force_resolution')).strip().lower()
+            selected_video, list_available_resolution, filter_custom_resolution, downloadable_video = self.parser.select_video(filter_custom_resolution)
             self.selected_video = selected_video
             
             available_video = ', '.join(list_available_resolution) if list_available_resolution else "Nothing"

@@ -41,7 +41,6 @@ DOWNLOAD_SPECIFIC_SUBTITLE = config_manager.get_list('M3U8_DOWNLOAD', 'specific_
 MERGE_SUBTITLE = config_manager.get_bool('M3U8_DOWNLOAD', 'merge_subs')
 CLEANUP_TMP = config_manager.get_bool('M3U8_DOWNLOAD', 'cleanup_tmp_folder')
 GET_ONLY_LINK = config_manager.get_int('M3U8_DOWNLOAD', 'get_only_link')
-FILTER_CUSTOM_RESOLUTION = str(config_manager.get('M3U8_CONVERSION', 'force_resolution')).strip().lower()
 RETRY_LIMIT = config_manager.get_int('REQUESTS', 'max_retry')
 MAX_TIMEOUT = config_manager.get_int("REQUESTS", "timeout")
 TELEGRAM_BOT = config_manager.get_bool('DEFAULT', 'telegram_bot')
@@ -172,18 +171,21 @@ class M3U8Manager:
         Selects video, audio, and subtitle streams based on configuration.
         If it's a master playlist, only selects video stream.
         """
+        # Read force_resolution dynamically
+        filter_custom_resolution = str(config_manager.get('M3U8_CONVERSION', 'force_resolution')).strip().lower()
+        
         if not self.is_master:
             self.video_url, self.video_res = self.m3u8_url, "undefined"
             self.audio_streams = []
             self.sub_streams = []
 
         else:
-            if str(FILTER_CUSTOM_RESOLUTION) == "best":
+            if str(filter_custom_resolution) == "best":
                 self.video_url, self.video_res = self.parser._video.get_best_uri()
-            elif str(FILTER_CUSTOM_RESOLUTION) == "worst":
+            elif str(filter_custom_resolution) == "worst":
                 self.video_url, self.video_res = self.parser._video.get_worst_uri()
-            elif str(FILTER_CUSTOM_RESOLUTION).replace("p", "").replace("px", "").isdigit():
-                resolution_value = int(str(FILTER_CUSTOM_RESOLUTION).replace("p", "").replace("px", ""))
+            elif str(filter_custom_resolution).replace("p", "").replace("px", "").isdigit():
+                resolution_value = int(str(filter_custom_resolution).replace("p", "").replace("px", ""))
                 self.video_url, self.video_res = self.parser._video.get_custom_uri(resolution_value)
             else:
                 logging.error("Resolution not recognized.")
@@ -207,6 +209,9 @@ class M3U8Manager:
 
     def log_selection(self):
         """Log the stream selection information in a formatted table."""
+        # Read force_resolution dynamically
+        filter_custom_resolution = str(config_manager.get('M3U8_CONVERSION', 'force_resolution')).strip().lower()
+        
         def calculate_column_widths():
             data_rows = []
             
@@ -221,7 +226,7 @@ class M3U8Manager:
             elif self.video_res and self.video_res != "undefined":
                 downloadable_video = str(self.video_res)
             
-            data_rows.append(["Video", available_video, str(FILTER_CUSTOM_RESOLUTION), downloadable_video])
+            data_rows.append(["Video", available_video, str(filter_custom_resolution), downloadable_video])
             
             # Codec information
             if self.parser.codec is not None:
