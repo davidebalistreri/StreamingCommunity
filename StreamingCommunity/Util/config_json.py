@@ -137,38 +137,37 @@ class ConfigManager:
             console.print(f"[bold yellow]User config not found:[/bold yellow] {self.user_config_path}")
             console.print("[bold cyan]Creating empty user config file...[/bold cyan]")
             
-            # Create empty user config with example
-            example_config = {
-                "_comment": "This file allows you to override default settings. Only add the keys you want to change.",
-                "_example": {
-                    "M3U8_DOWNLOAD": {
-                        "consider_failed_sync_valid": True,
-                        "specific_list_audio": ["ita", "eng"]
-                    }
-                }
-            }
+            # Create empty user config JSON
+            empty_config = {}
             
             with open(self.user_config_path, 'w', encoding='utf-8') as f:
-                json.dump(example_config, f, indent=4)
+                json.dump(empty_config, f, indent=4)
             
             self.user_config = {}
-            console.print(f"[bold green]Created example user config:[/bold green] {self.user_config_path}")
+            console.print(f"[bold green]Created empty user config:[/bold green] {self.user_config_path}")
             return
         
         try:
             with open(self.user_config_path, 'r', encoding='utf-8') as f:
                 self.user_config = json.load(f)
             
-            # Remove example/comment keys
-            if '_comment' in self.user_config:
-                del self.user_config['_comment']
-            if '_example' in self.user_config:
-                del self.user_config['_example']
-                
+            # Remove example/comment keys from processing, but don't modify the file
+            processed_config = dict(self.user_config)
+            if '_comment' in processed_config:
+                del processed_config['_comment']
+            if '_example' in processed_config:
+                del processed_config['_example']
+            
+            self.user_config = processed_config
             console.print(f"[bold green]User config loaded:[/bold green] {len(self.user_config)} sections")
             
         except json.JSONDecodeError as e:
             console.print(f"[bold red]Error parsing user config JSON:[/bold red] {str(e)}")
+            console.print(f"[bold yellow]Backing up corrupted file to {self.user_config_path}.backup[/bold yellow]")
+            try:
+                shutil.copy2(self.user_config_path, f"{self.user_config_path}.backup")
+            except Exception:
+                pass
             console.print("[bold yellow]Using default configuration only[/bold yellow]")
             self.user_config = {}
         except Exception as e:
@@ -717,16 +716,33 @@ class ConfigManager:
             console.print(f"[bold red]{error_msg}[/bold red]")
     
     def save_config(self) -> None:
-        """Save configuration changes to user_config.json file."""
+        """Save configuration changes to user_config.json file, preserving existing content."""
         try:
-            # Only save the differences from default config to user config
-            changes = self._extract_changes_from_default()
+            # Load the current user config to preserve it
+            current_user_config = {}
+            if os.path.exists(self.user_config_path):
+                try:
+                    with open(self.user_config_path, 'r', encoding='utf-8') as f:
+                        current_user_config = json.load(f)
+                except Exception as e:
+                    console.print(f"[bold yellow]Warning: Could not load existing user config: {e}[/bold yellow]")
+                    current_user_config = {}
             
-            with open(self.user_config_path, 'w', encoding='utf-8') as f:
-                json.dump(changes, f, indent=4)
-
-            logging.info(f"Configuration changes saved to: {self.user_config_path}")
-            console.print(f"[bold green]User configuration saved:[/bold green] {len(changes)} changes")
+            # Extract only the NEW differences from default config
+            new_changes = self._extract_changes_from_default()
+            
+            # Merge new changes with existing user config (preserving existing settings)
+            merged_config = self._deep_merge_configs(current_user_config, new_changes)
+            
+            # Only save if there are actual changes
+            if merged_config != current_user_config:
+                with open(self.user_config_path, 'w', encoding='utf-8') as f:
+                    json.dump(merged_config, f, indent=4)
+                
+                logging.info(f"Configuration changes saved to: {self.user_config_path}")
+                console.print(f"[bold green]User configuration updated:[/bold green] preserving existing settings")
+            else:
+                console.print(f"[bold cyan]No new changes to save[/bold cyan]")
 
         except Exception as e:
             error_msg = f"Error saving configuration: {e}"
