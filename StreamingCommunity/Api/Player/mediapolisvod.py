@@ -3,6 +3,7 @@
 
 # External libraries
 import httpx
+from rich.console import Console
 
 
 # Internal utilities
@@ -13,6 +14,7 @@ from StreamingCommunity.Util.headers import get_headers
 # Variable
 MAX_TIMEOUT = config_manager.get_int("REQUESTS", "timeout")
 REQUEST_VERIFY = config_manager.get_bool('REQUESTS', 'verify')
+console = Console()
 
 class VideoSource:
    
@@ -30,8 +32,7 @@ class VideoSource:
                         
         try:
             response = httpx.get(video_url, headers=get_headers(), timeout=MAX_TIMEOUT, verify=REQUEST_VERIFY)
-            if response.status_code != 200:
-                return f"Error: Failed to fetch video data (Status: {response.status_code})"
+            response.raise_for_status()
                 
             video_data = response.json()
             content_url = video_data.get("video").get("content_url")
@@ -51,14 +52,25 @@ class VideoSource:
                 'output': '62',
             }
             stream_response = httpx.get('https://mediapolisvod.rai.it/relinker/relinkerServlet.htm', params=params, headers=get_headers(), timeout=MAX_TIMEOUT, verify=REQUEST_VERIFY)
-            
-            if stream_response.status_code != 200:
-                return f"Error: Failed to fetch stream URL (Status: {stream_response.status_code})"
+            stream_response.raise_for_status()
                 
             # Extract the m3u8 URL
             stream_data = stream_response.json()
             m3u8_url = stream_data.get("video")[0] if "video" in stream_data else None
             return m3u8_url
             
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                console.print("[yellow]Content not found (404). Video may not be available.[/yellow]")
+                return "Error: Content not found (404)"
+            elif e.response.status_code == 410:
+                console.print("[red]Content no longer available (410 Gone). The video link may have expired or been removed.[/red]")
+                console.print("[yellow]Tip: Try refreshing the video link or try again later.[/yellow]")
+                return "Error: Content no longer available (410 Gone)"
+            else:
+                console.print(f"[red]HTTP error {e.response.status_code}: {e.response.text[:100]}[/red]")
+                return f"Error: HTTP {e.response.status_code}"
+            
         except Exception as e:
+            console.print(f"[red]Unexpected error: {str(e)}[/red]")
             return f"Error: {str(e)}"

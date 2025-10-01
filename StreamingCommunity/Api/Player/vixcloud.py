@@ -64,6 +64,18 @@ class VideoSource:
             soup = BeautifulSoup(response.text, "html.parser")
             self.iframe_src = soup.find("iframe").get("src")
 
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                console.print("[yellow]Episode not found (404). Content may not be available yet.[/yellow]")
+                raise
+            elif e.response.status_code == 410:
+                console.print("[red]Episode no longer available (410 Gone). The episode link may have expired or been removed.[/red]")
+                console.print("[yellow]Tip: Try refreshing the episode list or try again later.[/yellow]")
+                raise
+            
+            logging.error(f"HTTP error getting iframe source: {e}")
+            raise
+
         except Exception as e:
             logging.error(f"Error getting iframe source: {e}")
             raise
@@ -113,6 +125,10 @@ class VideoSource:
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 console.print("[yellow]This content will be available soon![/yellow]")
+                return
+            elif e.response.status_code == 410:
+                console.print("[red]Content no longer available (410 Gone). The video link may have expired or been removed.[/red]")
+                console.print("[yellow]Tip: Try refreshing the episode link or try again later.[/yellow]")
                 return
             
             logging.error(f"Error getting content: {e}")
@@ -195,6 +211,18 @@ class VideoSourceAnime(VideoSource):
             self.src_mp4 = soup.find("body").find_all("script")[1].text.split(" = ")[1].replace("'", "")
 
             return script
+        
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                console.print("[yellow]Anime content will be available soon![/yellow]")
+                return None
+            elif e.response.status_code == 410:
+                console.print("[red]Anime content no longer available (410 Gone). The video link may have expired or been removed.[/red]")
+                console.print("[yellow]Tip: Try refreshing the episode link or try again later.[/yellow]")
+                return None
+            
+            logging.error(f"HTTP error fetching embed URL: {e}")
+            return None
         
         except Exception as e:
             logging.error(f"Error fetching embed URL: {e}")
