@@ -576,7 +576,7 @@ class HLS_Downloader:
 
         try:
             # Check if file already exists (including _failed_sync variants if configured)
-            file_exists, existing_file_path = self.check_file_exists(self.path_manager.output_path)
+            file_exists, existing_file_path = self.path_manager.check_file_exists(self.path_manager.output_path)
             
             if file_exists:
                 console.print(f"[red]Output file {existing_file_path} already exists![/red]")
