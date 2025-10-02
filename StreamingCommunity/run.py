@@ -381,6 +381,10 @@ def setup_argument_parser(search_functions):
                     help='Consider files with _failed_sync.mp4 suffix as valid downloads.\n'
                             'Useful when sync errors are not actually problematic.')
 
+    parser.add_argument('--root_path', type=str, 
+                    help='Override the default download root path.\n'
+                            'Example: --root_path "/custom/download/path"')
+
     parser.add_argument('--category', type=int, help='Category (1: anime, 2: film_&_serie, 3: serie, 4: torrent)')
     parser.add_argument('--auto-first', action='store_true', help='Auto-download first result (use with --site and --search)')
     parser.add_argument('--site', type=str, help='Site by name or index')
@@ -396,6 +400,7 @@ def apply_config_updates(args):
         'not_close': 'DEFAULT.not_close', 
         'force_resolution': 'M3U8_CONVERSION.force_resolution',
         'consider_failed_sync_valid': 'M3U8_DOWNLOAD.consider_failed_sync_valid',
+        'root_path': 'OUT_FOLDER.root_path',
     }
     
     for arg_name, config_key in arg_mappings.items():
