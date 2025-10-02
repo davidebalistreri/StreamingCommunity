@@ -249,14 +249,36 @@ class ConfigManager:
                 file_size = len(response.content) / 1024
                 console.print(f"[bold green]Download complete:[/bold green] {os.path.basename(self.default_config_path)} ({file_size:.2f} KB)")
             else:
-
                 error_msg = f"HTTP Error: {response.status_code}, Response: {response.text[:100]}"
                 console.print(f"[bold red]Download failed:[/bold red] {error_msg}")
                 raise Exception(error_msg)
             
         except Exception as e:
             console.print(f"[bold red]Download error:[/bold red] {str(e)}")
-            raise
+            console.print("[bold yellow]Attempting fallback to legacy config.json...[/bold yellow]")
+            
+            # Fallback: try to download the old config.json
+            legacy_config_url = 'https://raw.githubusercontent.com/Arrowar/StreamingCommunity/refs/heads/main/config.json'
+            
+            try:
+                console.print(f"[bold cyan]Downloading legacy configuration:[/bold cyan] [green]{legacy_config_url}[/green]")
+                fallback_response = requests.get(legacy_config_url, timeout=8, headers={'User-Agent': get_userAgent()})
+                
+                if fallback_response.status_code == 200:
+                    with open(self.default_config_path, 'wb') as f:
+                        f.write(fallback_response.content)
+                    file_size = len(fallback_response.content) / 1024
+                    console.print(f"[bold green]Fallback download complete:[/bold green] {os.path.basename(self.default_config_path)} ({file_size:.2f} KB)")
+                    console.print("[bold yellow]Note: Downloaded legacy config.json as fallback[/bold yellow]")
+                else:
+                    error_msg = f"Fallback HTTP Error: {fallback_response.status_code}, Response: {fallback_response.text[:100]}"
+                    console.print(f"[bold red]Fallback download failed:[/bold red] {error_msg}")
+                    raise Exception(error_msg)
+                    
+            except Exception as fallback_error:
+                console.print(f"[bold red]Fallback download error:[/bold red] {str(fallback_error)}")
+                console.print("[bold red]Both default_config.json and config.json download failed[/bold red]")
+                raise Exception(f"Primary download failed: {str(e)}, Fallback download failed: {str(fallback_error)}")
     
     def _validate_and_update_config(self) -> None:
         """Validate the local configuration against the reference one and update missing keys."""
@@ -266,7 +288,15 @@ class ConfigManager:
             response = requests.get(self.reference_config_url, timeout=8, headers={'User-Agent': get_userAgent()})
             
             if not response.ok:
-                raise Exception(f"Error downloading reference configuration. Code: {response.status_code}")
+                # Try fallback to legacy config.json
+                console.print("[bold yellow]Primary config not available, trying legacy config.json...[/bold yellow]")
+                legacy_config_url = 'https://raw.githubusercontent.com/Arrowar/StreamingCommunity/refs/heads/main/config.json'
+                response = requests.get(legacy_config_url, timeout=8, headers={'User-Agent': get_userAgent()})
+                
+                if not response.ok:
+                    raise Exception(f"Error downloading both default_config.json and config.json. Codes: {response.status_code}")
+                else:
+                    console.print("[bold yellow]Using legacy config.json for validation[/bold yellow]")
             
             reference_config = response.json()
             
