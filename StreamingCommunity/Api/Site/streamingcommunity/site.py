@@ -75,7 +75,8 @@ def title_search(query: str) -> int:
                 'x-inertia-version': version
             },
             timeout=max_timeout,
-            verify=ssl_verify
+            verify=ssl_verify,
+            follow_redirects=True
         )
         response.raise_for_status()
 

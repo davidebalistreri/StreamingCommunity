@@ -52,7 +52,8 @@ class GetSerieInfo:
                 url=f"{self.url}/titles/{self.media_id}-{self.series_name}",
                 headers=self.headers,
                 timeout=max_timeout,
-                verify=ssl_verify
+                verify=ssl_verify,
+                follow_redirects=True
             )
             response.raise_for_status()
 
@@ -107,7 +108,8 @@ class GetSerieInfo:
                     'x-inertia-version': self.version,
                 },
                 timeout=max_timeout,
-                verify=ssl_verify
+                verify=ssl_verify,
+                follow_redirects=True
             )
 
             # Check if the response is successful
